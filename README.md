@@ -174,7 +174,9 @@ True-patient-ID experiments on COVID-CT-MD, a ground-truth check of the lung mas
   author = {Bhattacharya, Sayantan},
   title  = {Beyond 99\%: Auditing Leakage, Shortcuts and Calibration in COVID-19 CT Classification},
   year   = {2026},
-  note   = {Preprint, not peer-reviewed. Code: https://github.com/PopcornKitsilano/covid-ct-audit}
+  doi    = {10.5281/zenodo.23317781},
+  url    = {https://doi.org/10.5281/zenodo.23317781},
+  note   = {Preprint. Code: https://github.com/PopcornKitsilano/covid-ct-audit}
 }
 ```
 
