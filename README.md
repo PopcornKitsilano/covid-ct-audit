@@ -6,7 +6,6 @@ Sayantan Bhattacharya · Techno Main Salt Lake, Kolkata
 [![License: MIT](https://img.shields.io/badge/code%20licence-MIT-green.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.14%20%2B%20CUDA%2012.6-orange)
-![Status](https://img.shields.io/badge/status-preprint-lightgrey)
 
 **Paper:** [PDF](paper/beyond99percenttest1.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
 
