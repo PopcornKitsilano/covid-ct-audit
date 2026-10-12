@@ -1,0 +1,554 @@
+====================================================================================================
+Cell 2  (In [17])  CONFIG
+====================================================================================================
+SMOKE=False  ON_KAGGLE=False  outputs -> E:\covid_audit\work
+
+
+====================================================================================================
+Cell 4  (In [19])  TORCH
+====================================================================================================
+torch 2.14.1+cu126 | device: cuda | NVIDIA GeForce RTX 3060 Ti
+
+
+====================================================================================================
+Cell 6  (In [20])  1. FIND THE DATA
+====================================================================================================
+0 {'nCT': 'E:\\covid_audit\\data\\main\\Original CT Scans\\nCT', 'pCT': 'E:\\covid_audit\\data\\main\\Original CT Scans\\pCT', 'NiCT': 'E:\\covid_audit\\data\\main\\Original CT Scans\\NiCT'}
+1 {'nCT': 'E:\\covid_audit\\data\\main\\Preprocessed CT scans\\nCT', 'pCT': 'E:\\covid_audit\\data\\main\\Preprocessed CT scans\\pCT', 'NiCT': 'E:\\covid_audit\\data\\main\\Preprocessed CT scans\\NiCT'}
+
+USING: {'nCT': 'E:\\covid_audit\\data\\main\\Original CT Scans\\nCT', 'pCT': 'E:\\covid_audit\\data\\main\\Original CT Scans\\pCT', 'NiCT': 'E:\\covid_audit\\data\\main\\Original CT Scans\\NiCT'} 
+(if this is the wrong copy, set MAIN_ROOT to the right folder and re-run)
+
+
+====================================================================================================
+Cell 8  (In [21])  2. INDEX + CACHE (224x224 uint8 grayscale)
+====================================================================================================
+cls
+nCT     9979
+NiCT    5705
+pCT     4001
+
+main images: 100%|██████████| 19685/19685 [00:48<00:00, 405.66it/s]
+
+X: (19685, 224, 224) uint8 0.99 GB
+
+
+====================================================================================================
+Cell 10  (In [22])  3. AUDIT: what could a model cheat with?
+====================================================================================================
+Image size (w x h) per class - top 5:
+  nCT   {'512x512': 7641, '575x575': 1153, '1211x1211': 981, '574x574': 204}
+  pCT   {'512x512': 2081, '575x575': 1170, '1211x1211': 750}
+  NiCT  {'512x512': 3739, '575x575': 1127, '1211x1211': 738, '574x574': 101}
+
+File-name examples:
+  nCT   ['nCT1', 'nCT10', 'nCT100', 'nCT1000']
+  pCT   ['pCT1', 'pCT10', 'pCT100', 'pCT1000']
+  NiCT  ['NiCT1', 'NiCT10', 'NiCT100', 'NiCT1000']
+
+No usable scan/patient ID in the file names -> groups must be recovered from image content (Section 6).
+
+[image saved: images/cell_010_img_01.png]
+[image saved: images/cell_010_img_02.png]
+
+====================================================================================================
+Cell 12  (In [23])  4. CLASSICAL LUNG SEGMENTATION (heuristic!)
+====================================================================================================
+Mask QC (expect: nCT/pCT mostly non-empty, NiCT mostly empty or small):
+      median_area  frac_empty
+cls                          
+nCT         0.219       0.031
+pCT         0.203       0.018
+NiCT        0.000       0.830
+
+[image saved: images/cell_012_img_01.png]
+
+====================================================================================================
+Cell 14  (In [24])  5. EXTERNAL DATASETS
+====================================================================================================
+external A: 100%|██████████| 2481/2481 [00:02<00:00, 1073.07it/s]
+lung masks: 100%|██████████| 2481/2481 [00:15<00:00, 161.22it/s]
+
+[A_saopaulo] 2481 slices | positives=1252 | Sao Paulo; non-COVID = other lung disease; images are often cropped; NO patient IDs
+  skipping class folder (not COVID/normal): __MACOSX
+  skipping class folder (not COVID/normal): Cap Cases
+
+lung masks: 100%|██████████| 9800/9800 [02:36<00:00, 62.54it/s] 
+
+[B_covidctmd] 9800 slices | positives=6760 | Tehran; 245 patients; central slices only; true patient IDs available
+
+External sets loaded: ['A_saopaulo', 'B_covidctmd']
+
+
+====================================================================================================
+Cell 15  (In [26])  5b. EXTERNAL B (CORRECTED): real slice-level lesion labels
+====================================================================================================
+  Index.csv: 79 entries, label array: 79 rows -> using position in Index order as the row; 36 entries where Label Index != position, first few (folder, Label Index, position): [('P044', 44, 43), ('P045', 45, 44), ('P046', 46, 45), ('P047', 47, 46)]
+  patients with labels and DICOMs found: COVID=54, CAP=25
+  label-convention evidence = fraction of labelled-positive slice numbers that exist as files (a convention is supported when filenumX ~1.0 and clearly above chanceX;
+  if COVID and CAP rows disagree, the row mapping is wrong for one of them):
+       filenum1  chance1  filenum0  chance0
+kind                                       
+CAP         1.0      1.0       1.0    0.991
+COVID       1.0      1.0       1.0    0.991
+ALL         1.0      1.0       1.0    0.991
+  -> using label convention: position (if this is 'position' the file numbers carried no information; slices are ordered by DICOM InstanceNumber)
+  lesion slices: COVID 3779 of 8048 labelled slices, CAP 1178 of 3896 (subsampled to <= 40 per patient)
+
+lung masks: 100%|██████████| 5079/5079 [00:56<00:00, 89.91it/s] 
+
+[B2_tehran_lesion] 5079 slices | positives=2039 | Tehran, lesion-labelled COVID slices vs normal patients; labels by position; true patient IDs
+
+lung masks: 100%|██████████| 2881/2881 [00:24<00:00, 118.29it/s]
+
+[B3_tehran_vs_cap] 2881 slices | positives=2039 | Tehran, lesion-labelled COVID slices vs CAP lesion slices (hard negatives); labels by position; true patient IDs
+
+External sets now: ['A_saopaulo', 'B_covidctmd', 'B2_tehran_lesion', 'B3_tehran_vs_cap']
+
+
+====================================================================================================
+Cell 17  (In [27])  6a. EMBEDDINGS (frozen ImageNet MobileNetV3) + PCA
+====================================================================================================
+Z (19685, 96) Zdeep (19685, 64)
+
+
+====================================================================================================
+Cell 18  (In [28])  6a-bis. DO FILE NUMBERS ENCODE SCAN ORDER?
+====================================================================================================
+nCT  : consecutive file numbers median cosine similarity 0.323 | random same-class pairs 0.021
+pCT  : consecutive file numbers median cosine similarity 0.964 | random same-class pairs 0.009
+NiCT : consecutive file numbers median cosine similarity 0.678 | random same-class pairs 0.139
+If the first number is far above the second, file order carries scan identity -> a filename-order grouping would beat feature clustering.
+
+
+====================================================================================================
+Cell 20  (In [29])  6b. RECOVER PSEUDO-PATIENT GROUPS
+====================================================================================================
+linkage done in 12s
+      groups  largest_frac  singleton_frac  mean_size  class_purity
+K                                                                  
+50      50.0         0.070           0.000    393.700         0.864
+100    100.0         0.039           0.000    196.850         0.908
+300    300.0         0.018           0.003     65.617         0.953
+1000  1000.0         0.007           0.001     19.685         0.989
+3000  3000.0         0.003           0.047      6.562         0.995
+
+Read this table: largest_frac must stay small (otherwise one giant cluster ruins the split) and class_purity tells you whether clusters are class-pure (expected: high, because slices of one patient share a label).
+
+Operating point: K=300 -> 300 groups, largest = 1.8% of the data
+File-order groups: 300 groups, largest = 10.2%, singletons = 6.0%, class purity = 1.000
+ARI(feature-cluster groups, file-order groups) = 0.105  (1 = same grouping; two independent methods agreeing is evidence the groups are real scans)
+
+
+====================================================================================================
+Cell 22  (In [30])  6c. LEAKAGE WITHOUT TRAINING: probes + nearest-neighbour similarity
+====================================================================================================
+    K  LR_balacc  LR_sd  NN_balacc  NN_sd
+   50     0.9358 0.0065     0.7286 0.0073
+  100     0.8892 0.0005     0.7223 0.0000
+  300     0.9325 0.0113     0.8742 0.0259
+ 1000     0.9602 0.0056     0.9557 0.0140
+ 3000     0.9662 0.0041     0.9884 0.0062
+19685     0.9786 0.0036     0.9960 0.0008
+
+[image saved: images/cell_022_img_01.png]
+[image saved: images/cell_022_img_02.png]
+median nearest-train similarity: slice split 0.989 | group split 0.781
+
+
+====================================================================================================
+Cell 23  (In [37])  bak = WORK / "runs_full_before_tehran_fix"; bak.mkdir(exist_ok=True)
+====================================================================================================
+27 cached runs moved aside; 0 left in work\runs_full
+
+
+====================================================================================================
+Cell 25  (In [38])  7. TRAINING MACHINERY
+====================================================================================================
+ready
+
+
+====================================================================================================
+Cell 27  (In [39])  8. RUN EXPERIMENTS
+====================================================================================================
+  [E1_slice_full s0] ep 1/8  train 0.1091  val loss 0.0678  val bal-acc 0.9711  (18s)
+  [E1_slice_full s0] ep 2/8  train 0.0323  val loss 0.0427  val bal-acc 0.9873  (35s)
+  [E1_slice_full s0] ep 3/8  train 0.0222  val loss 0.0288  val bal-acc 0.9856  (52s)
+  [E1_slice_full s0] ep 4/8  train 0.0185  val loss 0.0295  val bal-acc 0.9899  (127s)
+  [E1_slice_full s0] ep 5/8  train 0.0160  val loss 0.0274  val bal-acc 0.9937  (145s)
+  [E1_slice_full s0] ep 6/8  train 0.0149  val loss 0.0099  val bal-acc 0.9956  (161s)
+  [E1_slice_full s0] ep 7/8  train 0.0136  val loss 0.0175  val bal-acc 0.9937  (178s)
+  [E1_slice_full s0] ep 8/8  train 0.0104  val loss 0.0121  val bal-acc 0.9952  (194s)
+E1_slice_full seed 0: test acc 0.9929  (n=2813)
+  [E1_slice_full s1] ep 1/8  train 0.1007  val loss 0.1142  val bal-acc 0.9453  (15s)
+  [E1_slice_full s1] ep 2/8  train 0.0310  val loss 0.0178  val bal-acc 0.9932  (29s)
+  [E1_slice_full s1] ep 3/8  train 0.0223  val loss 0.0221  val bal-acc 0.9902  (42s)
+  [E1_slice_full s1] ep 4/8  train 0.0178  val loss 0.0240  val bal-acc 0.9903  (56s)
+  [E1_slice_full s1] ep 5/8  train 0.0162  val loss 0.0371  val bal-acc 0.9795  (70s)
+  [E1_slice_full s1] ep 6/8  train 0.0119  val loss 0.0367  val bal-acc 0.9848  (84s)
+  [E1_slice_full s1] ep 7/8  train 0.0100  val loss 0.0167  val bal-acc 0.9948  (97s)
+  [E1_slice_full s1] ep 8/8  train 0.0128  val loss 0.0111  val bal-acc 0.9953  (111s)
+E1_slice_full seed 1: test acc 0.9940  (n=2813)
+  [E1_slice_full s2] ep 1/8  train 0.1109  val loss 0.0992  val bal-acc 0.9507  (14s)
+  [E1_slice_full s2] ep 2/8  train 0.0319  val loss 0.0249  val bal-acc 0.9897  (28s)
+  [E1_slice_full s2] ep 3/8  train 0.0203  val loss 0.0183  val bal-acc 0.9925  (41s)
+  [E1_slice_full s2] ep 4/8  train 0.0208  val loss 0.0160  val bal-acc 0.9952  (55s)
+  [E1_slice_full s2] ep 5/8  train 0.0148  val loss 0.0205  val bal-acc 0.9933  (69s)
+  [E1_slice_full s2] ep 6/8  train 0.0137  val loss 0.0169  val bal-acc 0.9948  (83s)
+  [E1_slice_full s2] ep 7/8  train 0.0129  val loss 0.0223  val bal-acc 0.9927  (96s)
+  [E1_slice_full s2] ep 8/8  train 0.0131  val loss 0.0120  val bal-acc 0.9946  (110s)
+E1_slice_full seed 2: test acc 0.9957  (n=2813)
+  [E2_group_full s0] ep 1/8  train 0.1017  val loss 0.3082  val bal-acc 0.8610  (25s)
+  [E2_group_full s0] ep 2/8  train 0.0272  val loss 0.1234  val bal-acc 0.9626  (39s)
+  [E2_group_full s0] ep 3/8  train 0.0175  val loss 0.0808  val bal-acc 0.9736  (52s)
+  [E2_group_full s0] ep 4/8  train 0.0161  val loss 0.1285  val bal-acc 0.9655  (66s)
+  [E2_group_full s0] ep 5/8  train 0.0154  val loss 0.0813  val bal-acc 0.9730  (80s)
+  [E2_group_full s0] ep 6/8  train 0.0137  val loss 0.1135  val bal-acc 0.9701  (94s)
+  [E2_group_full s0] ep 7/8  train 0.0080  val loss 0.1995  val bal-acc 0.9429  (107s)
+  [E2_group_full s0] ep 8/8  train 0.0090  val loss 0.1289  val bal-acc 0.9695  (121s)
+E2_group_full seed 0: test acc 0.9659  (n=2815)
+  [E2_group_full s1] ep 1/8  train 0.0991  val loss 0.7114  val bal-acc 0.7741  (14s)
+  [E2_group_full s1] ep 2/8  train 0.0240  val loss 0.3142  val bal-acc 0.8932  (28s)
+  [E2_group_full s1] ep 3/8  train 0.0198  val loss 0.0892  val bal-acc 0.9539  (41s)
+  [E2_group_full s1] ep 4/8  train 0.0141  val loss 0.2276  val bal-acc 0.9300  (55s)
+  [E2_group_full s1] ep 5/8  train 0.0131  val loss 0.4337  val bal-acc 0.8924  (69s)
+  [E2_group_full s1] ep 6/8  train 0.0126  val loss 0.5402  val bal-acc 0.8657  (83s)
+  [E2_group_full s1] ep 7/8  train 0.0114  val loss 0.2603  val bal-acc 0.9017  (96s)
+  [E2_group_full s1] ep 8/8  train 0.0095  val loss 0.1669  val bal-acc 0.9438  (110s)
+E2_group_full seed 1: test acc 0.9762  (n=2815)
+  [E2_group_full s2] ep 1/8  train 0.1013  val loss 0.6321  val bal-acc 0.8058  (22s)
+  [E2_group_full s2] ep 2/8  train 0.0287  val loss 0.2685  val bal-acc 0.9112  (36s)
+  [E2_group_full s2] ep 3/8  train 0.0215  val loss 0.1944  val bal-acc 0.9377  (49s)
+  [E2_group_full s2] ep 4/8  train 0.0168  val loss 0.1639  val bal-acc 0.9469  (63s)
+  [E2_group_full s2] ep 5/8  train 0.0129  val loss 0.3062  val bal-acc 0.9217  (77s)
+  [E2_group_full s2] ep 6/8  train 0.0121  val loss 0.1758  val bal-acc 0.9406  (91s)
+  [E2_group_full s2] ep 7/8  train 0.0128  val loss 0.1778  val bal-acc 0.9456  (104s)
+  [E2_group_full s2] ep 8/8  train 0.0153  val loss 0.1821  val bal-acc 0.9374  (118s)
+E2_group_full seed 2: test acc 0.9734  (n=2820)
+  [E2f_fileorder_group_full s0] ep 1/8  train 0.0881  val loss 0.2385  val bal-acc 0.9248  (25s)
+  [E2f_fileorder_group_full s0] ep 2/8  train 0.0224  val loss 0.1896  val bal-acc 0.9509  (39s)
+  [E2f_fileorder_group_full s0] ep 3/8  train 0.0158  val loss 0.7443  val bal-acc 0.8159  (53s)
+  [E2f_fileorder_group_full s0] ep 4/8  train 0.0126  val loss 0.2171  val bal-acc 0.9449  (67s)
+  [E2f_fileorder_group_full s0] ep 5/8  train 0.0103  val loss 0.3338  val bal-acc 0.9395  (81s)
+  [E2f_fileorder_group_full s0] ep 6/8  train 0.0098  val loss 0.2980  val bal-acc 0.9430  (95s)
+  [E2f_fileorder_group_full s0] ep 7/8  train 0.0055  val loss 0.2883  val bal-acc 0.9438  (109s)
+  [E2f_fileorder_group_full s0] ep 8/8  train 0.0108  val loss 0.2884  val bal-acc 0.9426  (123s)
+E2f_fileorder_group_full seed 0: test acc 0.9716  (n=2926)
+  [E2f_fileorder_group_full s1] ep 1/8  train 0.0887  val loss 0.2838  val bal-acc 0.8889  (14s)
+  [E2f_fileorder_group_full s1] ep 2/8  train 0.0206  val loss 0.7397  val bal-acc 0.8487  (28s)
+  [E2f_fileorder_group_full s1] ep 3/8  train 0.0121  val loss 0.2423  val bal-acc 0.9390  (42s)
+  [E2f_fileorder_group_full s1] ep 4/8  train 0.0127  val loss 0.2252  val bal-acc 0.9433  (56s)
+  [E2f_fileorder_group_full s1] ep 5/8  train 0.0078  val loss 0.4587  val bal-acc 0.9207  (70s)
+  [E2f_fileorder_group_full s1] ep 6/8  train 0.0089  val loss 0.3697  val bal-acc 0.9371  (84s)
+  [E2f_fileorder_group_full s1] ep 7/8  train 0.0094  val loss 0.2713  val bal-acc 0.9457  (98s)
+  [E2f_fileorder_group_full s1] ep 8/8  train 0.0085  val loss 0.4360  val bal-acc 0.9162  (112s)
+E2f_fileorder_group_full seed 1: test acc 0.9563  (n=2926)
+  [E2f_fileorder_group_full s2] ep 1/8  train 0.0859  val loss 0.2812  val bal-acc 0.8927  (14s)
+  [E2f_fileorder_group_full s2] ep 2/8  train 0.0234  val loss 0.7846  val bal-acc 0.8578  (28s)
+  [E2f_fileorder_group_full s2] ep 3/8  train 0.0135  val loss 0.3307  val bal-acc 0.9362  (42s)
+  [E2f_fileorder_group_full s2] ep 4/8  train 0.0117  val loss 0.5339  val bal-acc 0.9049  (56s)
+  [E2f_fileorder_group_full s2] ep 5/8  train 0.0097  val loss 0.4575  val bal-acc 0.9235  (70s)
+  [E2f_fileorder_group_full s2] ep 6/8  train 0.0121  val loss 0.3467  val bal-acc 0.9447  (84s)
+  [E2f_fileorder_group_full s2] ep 7/8  train 0.0072  val loss 0.4953  val bal-acc 0.9236  (100s)
+  [E2f_fileorder_group_full s2] ep 8/8  train 0.0067  val loss 0.8922  val bal-acc 0.8537  (116s)
+E2f_fileorder_group_full seed 2: test acc 0.9337  (n=2926)
+  [E3_group_nolung_mv3 s0] ep 1/8  train 0.1387  val loss 0.1815  val bal-acc 0.9023  (15s)
+  [E3_group_nolung_mv3 s0] ep 2/8  train 0.0387  val loss 0.3142  val bal-acc 0.8722  (29s)
+  [E3_group_nolung_mv3 s0] ep 3/8  train 0.0237  val loss 0.4664  val bal-acc 0.9370  (44s)
+  [E3_group_nolung_mv3 s0] ep 4/8  train 0.0194  val loss 0.3600  val bal-acc 0.9236  (59s)
+  [E3_group_nolung_mv3 s0] ep 5/8  train 0.0174  val loss 0.4102  val bal-acc 0.9482  (74s)
+  [E3_group_nolung_mv3 s0] ep 6/8  train 0.0181  val loss 0.4265  val bal-acc 0.9268  (89s)
+  [E3_group_nolung_mv3 s0] ep 7/8  train 0.0129  val loss 0.5193  val bal-acc 0.9087  (104s)
+  [E3_group_nolung_mv3 s0] ep 8/8  train 0.0115  val loss 0.7426  val bal-acc 0.9030  (119s)
+E3_group_nolung seed 0: test acc 0.8892  (n=2815)
+  [E3_group_nolung_mv3 s1] ep 1/8  train 0.1389  val loss 0.7435  val bal-acc 0.6642  (15s)
+  [E3_group_nolung_mv3 s1] ep 2/8  train 0.0359  val loss 0.3322  val bal-acc 0.8709  (31s)
+  [E3_group_nolung_mv3 s1] ep 3/8  train 0.0267  val loss 0.2854  val bal-acc 0.8602  (46s)
+  [E3_group_nolung_mv3 s1] ep 4/8  train 0.0189  val loss 0.1302  val bal-acc 0.9476  (60s)
+  [E3_group_nolung_mv3 s1] ep 5/8  train 0.0192  val loss 0.1765  val bal-acc 0.9301  (75s)
+  [E3_group_nolung_mv3 s1] ep 6/8  train 0.0187  val loss 0.3208  val bal-acc 0.9054  (90s)
+  [E3_group_nolung_mv3 s1] ep 7/8  train 0.0152  val loss 0.3628  val bal-acc 0.8563  (104s)
+  [E3_group_nolung_mv3 s1] ep 8/8  train 0.0139  val loss 0.1250  val bal-acc 0.9418  (119s)
+E3_group_nolung seed 1: test acc 0.9382  (n=2815)
+  [E3_group_nolung_mv3 s2] ep 1/8  train 0.1338  val loss 0.2418  val bal-acc 0.8729  (15s)
+  [E3_group_nolung_mv3 s2] ep 2/8  train 0.0380  val loss 0.1175  val bal-acc 0.9578  (29s)
+  [E3_group_nolung_mv3 s2] ep 3/8  train 0.0277  val loss 0.1570  val bal-acc 0.9458  (44s)
+  [E3_group_nolung_mv3 s2] ep 4/8  train 0.0199  val loss 0.2235  val bal-acc 0.9203  (58s)
+  [E3_group_nolung_mv3 s2] ep 5/8  train 0.0201  val loss 0.0752  val bal-acc 0.9754  (73s)
+  [E3_group_nolung_mv3 s2] ep 6/8  train 0.0152  val loss 0.4358  val bal-acc 0.8820  (87s)
+  [E3_group_nolung_mv3 s2] ep 7/8  train 0.0157  val loss 0.4123  val bal-acc 0.8741  (101s)
+  [E3_group_nolung_mv3 s2] ep 8/8  train 0.0162  val loss 0.2519  val bal-acc 0.9268  (116s)
+E3_group_nolung seed 2: test acc 0.9525  (n=2820)
+  [E4_group_lungonly_mv3 s0] ep 1/8  train 0.1960  val loss 0.2447  val bal-acc 0.9348  (14s)
+  [E4_group_lungonly_mv3 s0] ep 2/8  train 0.1241  val loss 0.3043  val bal-acc 0.8962  (29s)
+  [E4_group_lungonly_mv3 s0] ep 3/8  train 0.1121  val loss 0.1699  val bal-acc 0.9417  (43s)
+  [E4_group_lungonly_mv3 s0] ep 4/8  train 0.1038  val loss 0.2512  val bal-acc 0.9209  (58s)
+  [E4_group_lungonly_mv3 s0] ep 5/8  train 0.0979  val loss 0.2601  val bal-acc 0.9149  (72s)
+  [E4_group_lungonly_mv3 s0] ep 6/8  train 0.0982  val loss 0.1827  val bal-acc 0.9476  (87s)
+  [E4_group_lungonly_mv3 s0] ep 7/8  train 0.0926  val loss 0.4220  val bal-acc 0.8670  (101s)
+  [E4_group_lungonly_mv3 s0] ep 8/8  train 0.0902  val loss 0.2299  val bal-acc 0.9440  (116s)
+E4_group_lungonly seed 0: test acc 0.9236  (n=2815)
+  [E4_group_lungonly_mv3 s1] ep 1/8  train 0.2041  val loss 0.3889  val bal-acc 0.8075  (14s)
+  [E4_group_lungonly_mv3 s1] ep 2/8  train 0.1324  val loss 0.3818  val bal-acc 0.8524  (29s)
+  [E4_group_lungonly_mv3 s1] ep 3/8  train 0.1218  val loss 0.1692  val bal-acc 0.9435  (43s)
+  [E4_group_lungonly_mv3 s1] ep 4/8  train 0.1135  val loss 0.4034  val bal-acc 0.8756  (58s)
+  [E4_group_lungonly_mv3 s1] ep 5/8  train 0.1042  val loss 0.4231  val bal-acc 0.8763  (72s)
+  [E4_group_lungonly_mv3 s1] ep 6/8  train 0.1081  val loss 0.4079  val bal-acc 0.8736  (86s)
+  [E4_group_lungonly_mv3 s1] ep 7/8  train 0.1025  val loss 0.1980  val bal-acc 0.9285  (101s)
+  [E4_group_lungonly_mv3 s1] ep 8/8  train 0.1047  val loss 0.2460  val bal-acc 0.9196  (115s)
+E4_group_lungonly seed 1: test acc 0.9137  (n=2815)
+  [E4_group_lungonly_mv3 s2] ep 1/8  train 0.2041  val loss 0.3134  val bal-acc 0.8803  (14s)
+  [E4_group_lungonly_mv3 s2] ep 2/8  train 0.1271  val loss 0.4398  val bal-acc 0.8190  (29s)
+  [E4_group_lungonly_mv3 s2] ep 3/8  train 0.1170  val loss 0.6684  val bal-acc 0.7975  (43s)
+  [E4_group_lungonly_mv3 s2] ep 4/8  train 0.1084  val loss 0.2261  val bal-acc 0.9247  (57s)
+  [E4_group_lungonly_mv3 s2] ep 5/8  train 0.1025  val loss 0.3216  val bal-acc 0.9028  (72s)
+  [E4_group_lungonly_mv3 s2] ep 6/8  train 0.1025  val loss 0.1381  val bal-acc 0.9517  (86s)
+  [E4_group_lungonly_mv3 s2] ep 7/8  train 0.0995  val loss 0.1472  val bal-acc 0.9477  (101s)
+  [E4_group_lungonly_mv3 s2] ep 8/8  train 0.0978  val loss 0.3106  val bal-acc 0.8994  (116s)
+E4_group_lungonly seed 2: test acc 0.9294  (n=2820)
+  [E5_group_full_robust_a2 s0] ep 1/8  train 0.1288  val loss 0.1253  val bal-acc 0.9399  (18s)
+  [E5_group_full_robust_a2 s0] ep 2/8  train 0.0414  val loss 0.1494  val bal-acc 0.9372  (33s)
+  [E5_group_full_robust_a2 s0] ep 3/8  train 0.0299  val loss 0.1382  val bal-acc 0.9530  (48s)
+  [E5_group_full_robust_a2 s0] ep 4/8  train 0.0216  val loss 0.2032  val bal-acc 0.9479  (63s)
+  [E5_group_full_robust_a2 s0] ep 5/8  train 0.0197  val loss 0.2151  val bal-acc 0.9427  (78s)
+  [E5_group_full_robust_a2 s0] ep 6/8  train 0.0161  val loss 0.1865  val bal-acc 0.9424  (93s)
+  [E5_group_full_robust_a2 s0] ep 7/8  train 0.0153  val loss 0.1991  val bal-acc 0.9638  (108s)
+  [E5_group_full_robust_a2 s0] ep 8/8  train 0.0143  val loss 0.2615  val bal-acc 0.9449  (124s)
+E5_group_full_robust seed 0: test acc 0.9606  (n=2815)
+  [E5_group_full_robust_a2 s1] ep 1/8  train 0.1212  val loss 0.1554  val bal-acc 0.9242  (15s)
+  [E5_group_full_robust_a2 s1] ep 2/8  train 0.0388  val loss 0.2106  val bal-acc 0.9177  (31s)
+  [E5_group_full_robust_a2 s1] ep 3/8  train 0.0275  val loss 0.2202  val bal-acc 0.9173  (47s)
+  [E5_group_full_robust_a2 s1] ep 4/8  train 0.0220  val loss 0.1784  val bal-acc 0.9361  (62s)
+  [E5_group_full_robust_a2 s1] ep 5/8  train 0.0190  val loss 0.2593  val bal-acc 0.9126  (77s)
+  [E5_group_full_robust_a2 s1] ep 6/8  train 0.0190  val loss 0.2134  val bal-acc 0.9383  (92s)
+  [E5_group_full_robust_a2 s1] ep 7/8  train 0.0159  val loss 0.3001  val bal-acc 0.9170  (107s)
+  [E5_group_full_robust_a2 s1] ep 8/8  train 0.0130  val loss 0.3609  val bal-acc 0.9046  (122s)
+E5_group_full_robust seed 1: test acc 0.9837  (n=2815)
+  [E5_group_full_robust_a2 s2] ep 1/8  train 0.1273  val loss 0.1463  val bal-acc 0.9304  (15s)
+  [E5_group_full_robust_a2 s2] ep 2/8  train 0.0384  val loss 0.3042  val bal-acc 0.9151  (31s)
+  [E5_group_full_robust_a2 s2] ep 3/8  train 0.0323  val loss 0.2483  val bal-acc 0.9259  (46s)
+  [E5_group_full_robust_a2 s2] ep 4/8  train 0.0264  val loss 0.1625  val bal-acc 0.9400  (61s)
+  [E5_group_full_robust_a2 s2] ep 5/8  train 0.0188  val loss 0.1901  val bal-acc 0.9418  (76s)
+  [E5_group_full_robust_a2 s2] ep 6/8  train 0.0182  val loss 0.2833  val bal-acc 0.9328  (91s)
+  [E5_group_full_robust_a2 s2] ep 7/8  train 0.0178  val loss 0.2968  val bal-acc 0.9237  (106s)
+  [E5_group_full_robust_a2 s2] ep 8/8  train 0.0139  val loss 0.1342  val bal-acc 0.9559  (122s)
+E5_group_full_robust seed 2: test acc 0.9709  (n=2820)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 1/8  train 0.2159  val loss 0.1988  val bal-acc 0.9340  (15s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 2/8  train 0.1389  val loss 0.2042  val bal-acc 0.9189  (30s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 3/8  train 0.1243  val loss 0.1625  val bal-acc 0.9499  (46s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 4/8  train 0.1118  val loss 0.2401  val bal-acc 0.9334  (61s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 5/8  train 0.1104  val loss 0.2041  val bal-acc 0.9354  (76s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 6/8  train 0.1006  val loss 0.2127  val bal-acc 0.9468  (91s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 7/8  train 0.0980  val loss 0.2344  val bal-acc 0.9396  (106s)
+  [E6_group_lungonly_robust_a2_mv3 s0] ep 8/8  train 0.0961  val loss 0.2697  val bal-acc 0.9201  (122s)
+E6_group_lungonly_robust seed 0: test acc 0.8945  (n=2815)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 1/8  train 0.2210  val loss 0.2996  val bal-acc 0.8981  (15s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 2/8  train 0.1474  val loss 0.3102  val bal-acc 0.8898  (30s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 3/8  train 0.1298  val loss 0.2311  val bal-acc 0.9077  (45s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 4/8  train 0.1183  val loss 0.2170  val bal-acc 0.9233  (60s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 5/8  train 0.1155  val loss 0.3427  val bal-acc 0.8951  (76s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 6/8  train 0.1102  val loss 0.3090  val bal-acc 0.9086  (91s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 7/8  train 0.1087  val loss 0.3010  val bal-acc 0.9204  (106s)
+  [E6_group_lungonly_robust_a2_mv3 s1] ep 8/8  train 0.1077  val loss 0.2955  val bal-acc 0.9136  (121s)
+E6_group_lungonly_robust seed 1: test acc 0.9403  (n=2815)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 1/8  train 0.2250  val loss 0.3341  val bal-acc 0.8903  (15s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 2/8  train 0.1428  val loss 0.2646  val bal-acc 0.9131  (30s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 3/8  train 0.1264  val loss 0.3048  val bal-acc 0.8982  (46s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 4/8  train 0.1132  val loss 0.2299  val bal-acc 0.9292  (61s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 5/8  train 0.1078  val loss 0.2926  val bal-acc 0.9075  (76s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 6/8  train 0.1061  val loss 0.4066  val bal-acc 0.8914  (91s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 7/8  train 0.1038  val loss 0.3108  val bal-acc 0.9081  (106s)
+  [E6_group_lungonly_robust_a2_mv3 s2] ep 8/8  train 0.1000  val loss 0.1894  val bal-acc 0.9417  (121s)
+E6_group_lungonly_robust seed 2: test acc 0.9230  (n=2820)
+all runs done in 44.6 min
+
+
+====================================================================================================
+Cell 29  (In [40])  8b. METRICS + STATISTICS
+====================================================================================================
+                                        acc            bal_acc         recall_nCT         recall_pCT        recall_NiCT       auroc_n_vs_p                ece                nll
+exp                                                                                                                                                                             
+E1_slice_full             0.9942 +/- 0.0014  0.9944 +/- 0.0015  0.9942 +/- 0.0032  0.9959 +/- 0.0020  0.9930 +/- 0.0051  1.0000 +/- 0.0000  0.0030 +/- 0.0008  0.0150 +/- 0.0050
+E2_group_full             0.9718 +/- 0.0053  0.9690 +/- 0.0097  0.9787 +/- 0.0008  0.9602 +/- 0.0349  0.9681 +/- 0.0063  0.9959 +/- 0.0035  0.0153 +/- 0.0068  0.1014 +/- 0.0344
+E2f_fileorder_group_full  0.9539 +/- 0.0191  0.9346 +/- 0.0475  0.9668 +/- 0.0093  0.8883 +/- 0.1597  0.9486 +/- 0.0286  0.9987 +/- 0.0019  0.0175 +/- 0.0095  0.1327 +/- 0.0485
+E3_group_nolung           0.9266 +/- 0.0332  0.9303 +/- 0.0386  0.9139 +/- 0.0255  0.9319 +/- 0.0766  0.9452 +/- 0.0369  0.9722 +/- 0.0269  0.0382 +/- 0.0064  0.2505 +/- 0.0533
+E4_group_lungonly         0.9222 +/- 0.0080  0.9293 +/- 0.0120  0.8954 +/- 0.0254  0.9260 +/- 0.0608  0.9664 +/- 0.0124  0.9887 +/- 0.0099  0.0315 +/- 0.0080  0.2524 +/- 0.0183
+E5_group_full_robust      0.9717 +/- 0.0116  0.9695 +/- 0.0164  0.9764 +/- 0.0123  0.9607 +/- 0.0456  0.9713 +/- 0.0028  0.9971 +/- 0.0029  0.0126 +/- 0.0084  0.0939 +/- 0.0443
+E6_group_lungonly_robust  0.9193 +/- 0.0231  0.9254 +/- 0.0302  0.8919 +/- 0.0170  0.9116 +/- 0.0682  0.9726 +/- 0.0125  0.9840 +/- 0.0185  0.0390 +/- 0.0208  0.2746 +/- 0.0921
+
+=== LEAKAGE GAP  (slice split - group split) ===
+  accuracy: 0.9942 -> 0.9718   gap = 2.24 points  (per seed: [2.7, 1.78, 2.23])
+  balanced accuracy: 0.9944 -> 0.9690
+  same comparison with FILE-ORDER groups: 0.9942 -> 0.9539   gap = 4.03 points  (two independent grouping methods)
+  COVID-positive recall: 0.9959 -> 0.9602
+
+=== EFFECTIVE SAMPLE SIZE ===
+  E1 test set: n=2813 slices from ~291 groups -> design effect 1.2, n_eff ~ 2399
+  E1 accuracy 95% CI: Wilson [0.9906, 0.9964]   vs cluster bootstrap [0.9910, 0.9971]
+  McNemar E2 vs E5 seed 0: E2-only-correct=47, E5-only-correct=32, p=0.115
+  McNemar E2 vs E5 seed 1: E2-only-correct=19, E5-only-correct=40, p=0.009
+  McNemar E2 vs E5 seed 2: E2-only-correct=22, E5-only-correct=15, p=0.324
+
+[image saved: images/cell_029_img_01.png]
+
+====================================================================================================
+Cell 31  (In [41])  9a. METADATA-ONLY BASELINE + SRI
+====================================================================================================
+Metadata-only classifiers (chance = 0.333):
+                       features split    balanced_acc
+         image + file size only slice 0.600 +/- 0.008
+         image + file size only group 0.391 +/- 0.023
+all scalar acquisition features slice 0.996 +/- 0.001
+all scalar acquisition features group 0.630 +/- 0.013
+
+SRI (1 = lungs not needed):
+                          balanced_acc  AUROC_nCT_vs_pCT    SRI
+E2_group_full                    0.969             0.996  1.000
+E3_group_nolung                  0.930             0.972  0.939
+E4_group_lungonly                0.929             0.989  0.938
+E5_group_full_robust             0.969             0.997  1.001
+E6_group_lungonly_robust         0.925             0.984  0.931
+
+
+====================================================================================================
+Cell 32  (In [42])  9b. TEST-TIME ABLATION + GRAD-CAM
+====================================================================================================
+E2 model, test slices shown in different ways:
+                   acc  bal_acc  recall_nCT  recall_pCT  recall_NiCT  auroc_n_vs_p
+test_time_input                                                                   
+full             0.966    0.958       0.980       0.924        0.972         0.994
+lung_only        0.818    0.740       0.939       0.326        0.956         0.908
+no_lung          0.379    0.422       0.119       0.158        0.989         0.827
+nCT: median Grad-CAM enrichment inside lungs = 2.92 (n=300)
+pCT: median Grad-CAM enrichment inside lungs = 2.28 (n=300)
+
+[image saved: images/cell_032_img_01.png]
+[image saved: images/cell_032_img_02.png]
+
+====================================================================================================
+Cell 34  (In [43])  10. EXTERNAL EVALUATION
+====================================================================================================
+
+=== EXTERNAL: A_saopaulo  (Sao Paulo; non-COVID = other lung disease; images are often cropped; NO patient IDs) ===
+                         in-domain AUROC nCT/pCT            auroc               ap             sens             spec   frac_pred_NiCT
+exp                                                                                                                                  
+E1_slice_full                              1.000  0.826 +/- 0.027  0.849 +/- 0.028  0.537 +/- 0.084  0.932 +/- 0.008  0.014 +/- 0.005
+E2_group_full                              0.996  0.832 +/- 0.041  0.859 +/- 0.031  0.621 +/- 0.037  0.886 +/- 0.041  0.008 +/- 0.002
+E2f_fileorder_group_full                   0.999  0.804 +/- 0.014  0.837 +/- 0.012  0.431 +/- 0.117  0.957 +/- 0.041  0.019 +/- 0.003
+E3_group_nolung                            0.972  0.734 +/- 0.026  0.755 +/- 0.022  0.366 +/- 0.151  0.885 +/- 0.116  0.012 +/- 0.006
+E4_group_lungonly                          0.989  0.643 +/- 0.026  0.676 +/- 0.031  0.413 +/- 0.038  0.778 +/- 0.022  0.378 +/- 0.003
+E5_group_full_robust                       0.997  0.862 +/- 0.017  0.886 +/- 0.016  0.683 +/- 0.026  0.875 +/- 0.055  0.006 +/- 0.002
+E6_group_lungonly_robust                   0.984  0.625 +/- 0.017  0.673 +/- 0.017  0.446 +/- 0.028  0.701 +/- 0.030  0.380 +/- 0.007
+
+=== EXTERNAL: B_covidctmd  (Tehran; 245 patients; central slices only; true patient IDs available) ===
+                         in-domain AUROC nCT/pCT            auroc               ap             sens             spec   frac_pred_NiCT
+exp                                                                                                                                  
+E1_slice_full                              1.000  0.785 +/- 0.013  0.891 +/- 0.015  0.164 +/- 0.105  0.991 +/- 0.008  0.032 +/- 0.004
+E2_group_full                              0.996  0.791 +/- 0.001  0.899 +/- 0.002  0.305 +/- 0.060  0.973 +/- 0.008  0.025 +/- 0.001
+E2f_fileorder_group_full                   0.999  0.773 +/- 0.014  0.890 +/- 0.007  0.118 +/- 0.042  0.999 +/- 0.002  0.032 +/- 0.008
+E3_group_nolung                            0.972  0.654 +/- 0.005  0.799 +/- 0.002  0.113 +/- 0.029  0.969 +/- 0.011  0.029 +/- 0.006
+E4_group_lungonly                          0.989  0.809 +/- 0.007  0.915 +/- 0.004  0.522 +/- 0.097  0.931 +/- 0.047  0.031 +/- 0.006
+E5_group_full_robust                       0.997  0.803 +/- 0.007  0.910 +/- 0.003  0.274 +/- 0.034  0.995 +/- 0.001  0.028 +/- 0.004
+E6_group_lungonly_robust                   0.984  0.804 +/- 0.002  0.914 +/- 0.001  0.560 +/- 0.021  0.917 +/- 0.006  0.041 +/- 0.012
+
+=== EXTERNAL: B2_tehran_lesion  (Tehran, lesion-labelled COVID slices vs normal patients; labels by position; true patient IDs) ===
+                         in-domain AUROC nCT/pCT            auroc               ap             sens             spec   frac_pred_NiCT
+exp                                                                                                                                  
+E1_slice_full                              1.000  0.861 +/- 0.019  0.813 +/- 0.047  0.222 +/- 0.156  0.991 +/- 0.008  0.032 +/- 0.005
+E2_group_full                              0.996  0.862 +/- 0.006  0.835 +/- 0.006  0.419 +/- 0.073  0.973 +/- 0.008  0.023 +/- 0.003
+E2f_fileorder_group_full                   0.999  0.845 +/- 0.019  0.820 +/- 0.016  0.154 +/- 0.075  0.999 +/- 0.002  0.032 +/- 0.008
+E3_group_nolung                            0.972  0.644 +/- 0.012  0.540 +/- 0.006  0.107 +/- 0.035  0.969 +/- 0.011  0.030 +/- 0.006
+E4_group_lungonly                          0.989  0.889 +/- 0.013  0.880 +/- 0.017  0.661 +/- 0.083  0.931 +/- 0.047  0.033 +/- 0.007
+E5_group_full_robust                       0.997  0.887 +/- 0.002  0.869 +/- 0.001  0.368 +/- 0.045  0.995 +/- 0.001  0.027 +/- 0.005
+E6_group_lungonly_robust                   0.984  0.890 +/- 0.004  0.881 +/- 0.003  0.707 +/- 0.018  0.917 +/- 0.006  0.041 +/- 0.012
+
+=== EXTERNAL: B3_tehran_vs_cap  (Tehran, lesion-labelled COVID slices vs CAP lesion slices (hard negatives); labels by position; true patient IDs) ===
+                         in-domain AUROC nCT/pCT            auroc               ap             sens             spec   frac_pred_NiCT
+exp                                                                                                                                  
+E1_slice_full                              1.000  0.460 +/- 0.027  0.678 +/- 0.018  0.222 +/- 0.156  0.729 +/- 0.183  0.054 +/- 0.008
+E2_group_full                              0.996  0.425 +/- 0.027  0.654 +/- 0.017  0.419 +/- 0.073  0.492 +/- 0.106  0.044 +/- 0.006
+E2f_fileorder_group_full                   0.999  0.442 +/- 0.010  0.668 +/- 0.006  0.154 +/- 0.075  0.768 +/- 0.078  0.059 +/- 0.013
+E3_group_nolung                            0.972  0.433 +/- 0.053  0.653 +/- 0.037  0.107 +/- 0.035  0.806 +/- 0.050  0.051 +/- 0.010
+E4_group_lungonly                          0.989  0.472 +/- 0.014  0.687 +/- 0.013  0.661 +/- 0.083  0.313 +/- 0.065  0.065 +/- 0.011
+E5_group_full_robust                       0.997  0.452 +/- 0.005  0.691 +/- 0.004  0.368 +/- 0.045  0.557 +/- 0.048  0.050 +/- 0.006
+E6_group_lungonly_robust                   0.984  0.490 +/- 0.006  0.721 +/- 0.009  0.707 +/- 0.018  0.269 +/- 0.017  0.077 +/- 0.020
+
+[image saved: images/cell_034_img_01.png]
+
+====================================================================================================
+Cell 36  (In [44])  11. CALIBRATION
+====================================================================================================
+                               T  ECE_test  ECE_test_cal  NLL_test  NLL_test_cal  ECE_A_saopaulo  ECE_A_saopaulo_cal  ECE_B_covidctmd  ECE_B_covidctmd_cal  ECE_B2_tehran_lesion  ECE_B2_tehran_lesion_cal  ECE_B3_tehran_vs_cap  ECE_B3_tehran_vs_cap_cal
+exp                                                                                                                                                                                                                                                       
+E1_slice_full             0.9736    0.0030        0.0031    0.0150        0.0153          0.2336              0.2346           0.5693               0.5694                0.3042                    0.3044                0.5825                    0.5834
+E2_group_full             1.5913    0.0153        0.0104    0.1014        0.0853          0.2051              0.1809           0.4702               0.4655                0.2282                    0.2175                0.5175                    0.4885
+E2f_fileorder_group_full  1.6928    0.0175        0.0157    0.1327        0.1258          0.2843              0.2713           0.6030               0.5963                0.3340                    0.3274                0.6224                    0.5890
+E3_group_nolung           1.3014    0.0382        0.0318    0.2505        0.2226          0.3074              0.2880           0.5997               0.5959                0.3527                    0.3489                0.6453                    0.6364
+E4_group_lungonly         1.0038    0.0315        0.0321    0.2524        0.2506          0.2743              0.2739           0.3128               0.3137                0.1283                    0.1298                0.3753                    0.3745
+E5_group_full_robust      1.6288    0.0126        0.0116    0.0939        0.0823          0.1671              0.1395           0.4941               0.4906                0.2451                    0.2414                0.5164                    0.4820
+E6_group_lungonly_robust  1.2611    0.0390        0.0279    0.2746        0.2549          0.3287              0.3017           0.2866               0.2783                0.1197                    0.1086                0.3727                    0.3611
+
+[image saved: images/cell_036_img_01.png]
+
+====================================================================================================
+Cell 38  (In [45])  12. GROUP-RECOVERY VALIDATION (needs external B)
+====================================================================================================
+Recovery quality on slices with KNOWN patients:
+  K  true_patients   ARI  pair_precision  pair_recall  largest_cluster_frac
+ 61            245 0.046           0.029        0.284                 0.097
+122            245 0.073           0.047        0.264                 0.083
+245            245 0.132           0.095        0.249                 0.045
+490            245 0.207           0.194        0.229                 0.032
+980            245 0.288           0.551        0.196                 0.007
+
+Probe accuracy on B under three protocols:
+                     split LR_balanced_acc NN_balanced_acc
+        random slice split           0.758           0.998
+        TRUE patient split           0.701           0.551
+recovered clusters (K=245)           0.717           0.717
+
+If 'recovered' is close to 'TRUE', the recovery method is a faithful stand-in. If it is LOWER, your main-dataset gap is an upper bound.
+
+
+====================================================================================================
+Cell 40  (In [46])  13. SUMMARY
+====================================================================================================
+# Results summary (auto-generated)
+- Data: 19685 slices, class counts {'nCT': 9979, 'pCT': 4001, 'NiCT': 5705}; recovered groups K=300 (300 clusters).
+- Seeds: [0, 1, 2] (ablations: [0, 1, 2]); epochs=8; batch=32; lr=0.0001.
+
+## Headline
+- Slice split accuracy 0.9942; group split accuracy 0.9718; gap 2.24 points.
+- COVID-positive recall: slice split 0.9959; group split 0.9602.
+- Test set of 2813 slices has design effect ~1.2 (n_eff ~ 2399).
+
+## Per-experiment (mean +/- sd over seeds)
+                                        acc            bal_acc         recall_nCT         recall_pCT        recall_NiCT       auroc_n_vs_p                ece                nll
+exp                                                                                                                                                                             
+E1_slice_full             0.9942 +/- 0.0014  0.9944 +/- 0.0015  0.9942 +/- 0.0032  0.9959 +/- 0.0020  0.9930 +/- 0.0051  1.0000 +/- 0.0000  0.0030 +/- 0.0008  0.0150 +/- 0.0050
+E2_group_full             0.9718 +/- 0.0053  0.9690 +/- 0.0097  0.9787 +/- 0.0008  0.9602 +/- 0.0349  0.9681 +/- 0.0063  0.9959 +/- 0.0035  0.0153 +/- 0.0068  0.1014 +/- 0.0344
+E2f_fileorder_group_full  0.9539 +/- 0.0191  0.9346 +/- 0.0475  0.9668 +/- 0.0093  0.8883 +/- 0.1597  0.9486 +/- 0.0286  0.9987 +/- 0.0019  0.0175 +/- 0.0095  0.1327 +/- 0.0485
+E3_group_nolung           0.9266 +/- 0.0332  0.9303 +/- 0.0386  0.9139 +/- 0.0255  0.9319 +/- 0.0766  0.9452 +/- 0.0369  0.9722 +/- 0.0269  0.0382 +/- 0.0064  0.2505 +/- 0.0533
+E4_group_lungonly         0.9222 +/- 0.0080  0.9293 +/- 0.0120  0.8954 +/- 0.0254  0.9260 +/- 0.0608  0.9664 +/- 0.0124  0.9887 +/- 0.0099  0.0315 +/- 0.0080  0.2524 +/- 0.0183
+E5_group_full_robust      0.9717 +/- 0.0116  0.9695 +/- 0.0164  0.9764 +/- 0.0123  0.9607 +/- 0.0456  0.9713 +/- 0.0028  0.9971 +/- 0.0029  0.0126 +/- 0.0084  0.0939 +/- 0.0443
+E6_group_lungonly_robust  0.9193 +/- 0.0231  0.9254 +/- 0.0302  0.8919 +/- 0.0170  0.9116 +/- 0.0682  0.9726 +/- 0.0125  0.9840 +/- 0.0185  0.0390 +/- 0.0208  0.2746 +/- 0.0921
+
+## Caveats to keep in the paper
+- Groups are recovered by clustering, not true patient IDs (validated on external B in Section 12).
+- Lung masks are classical image processing; inspect fig 03 before citing any lung/no-lung number.
+- External A has no patient IDs; its negatives are other lung diseases; many images are cropped.
+- Research use only; not a medical device.
+
+Files in E:\covid_audit\work : ['RESULTS_full.md', 'RESULTS_smoke.md', 'figs_full', 'figs_smoke', 'main_M_full_v2.npy', 'main_M_full_v3.npy', 'main_M_smoke_v2.npy', 'main_X_full.npy', 'main_X_smoke.npy', 'main_Z_full_deep+thumb.npz', 'main_Z_smoke_deep+thumb.npz', 'main_meta_full.csv', 'main_meta_smoke.csv', 'results_calibration_full.csv', 'results_calibration_smoke.csv', 'results_external_full.csv', 'results_external_smoke.csv', 'results_per_run_full.csv', 'results_per_run_smoke.csv', 'runs_full', 'runs_full_before_tehran_fix', 'runs_smoke']
+
+
+====================================================================================================
+Cell 42  (In [50])  import base64, json, re, subprocess, sys
+====================================================================================================
+Notebook file last saved: 2026-10-10 12:27:40
+20 of 21 code cells had output; 10 images extracted.
+Saved to: E:\covid_audit\notebook_outputs_20261011_202941
+    all_outputs.md
+    all_outputs.txt
+    full_notebook_with_outputs.html
+    images/
