@@ -8,6 +8,7 @@ version: 1.0.0
 date-released: 2026-10-12
 license: MIT
 repository-code: "https://github.com/PopcornKitsilano/covid-ct-audit"
+doi: "10.5281/zenodo.23317781"
 preferred-citation:
   type: report
   title: "Beyond 99%: Auditing Leakage, Shortcuts and Calibration in COVID-19 CT Classification"
@@ -15,4 +16,7 @@ preferred-citation:
     - family-names: Bhattacharya
       given-names: Sayantan
   year: 2026
+  institution:
+    name: "Techno Main Salt Lake"
+  doi: "10.5281/zenodo.23317781"
   notes: "Preprint, not peer-reviewed."
