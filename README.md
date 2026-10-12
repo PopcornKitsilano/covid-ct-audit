@@ -8,7 +8,7 @@ Sayantan Bhattacharya · Techno Main Salt Lake, Kolkata
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.14%20%2B%20CUDA%2012.6-orange)
 ![Status](https://img.shields.io/badge/status-preprint-lightgrey)
 
-**Paper:** [PDF](paper/Beyond99percenttest1.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
+**Paper:** [PDF](paper/beyond99percenttest1.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
 
 <!-- After the Zenodo upload add: **DOI:** https://doi.org/10.5281/zenodo.XXXXXXX -->
 
