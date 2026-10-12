@@ -1,14 +1,14 @@
 # covid-ct-audit
 
 **Beyond 99%: Auditing Leakage, Shortcuts and Calibration in COVID-19 CT Classification**
-Sayantan Bhattacharya · Techno Main Salt Lake, Kolkata · preprint, not peer-reviewed
+Sayantan Bhattacharya · Techno Main Salt Lake, Kolkata 
 
 [![License: MIT](https://img.shields.io/badge/code%20licence-MIT-green.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.14%20%2B%20CUDA%2012.6-orange)
 ![Status](https://img.shields.io/badge/status-preprint-lightgrey)
 
-**Paper:** [PDF](paper/Beyond99_preprint_v1.0.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
+**Paper:** [PDF](paper/Beyond99percenttest1.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
 
 <!-- After the Zenodo upload add: **DOI:** https://doi.org/10.5281/zenodo.XXXXXXX -->
 
