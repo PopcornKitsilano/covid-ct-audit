@@ -7,9 +7,11 @@ Sayantan Bhattacharya · Techno Main Salt Lake, Kolkata
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.14%20%2B%20CUDA%2012.6-orange)
 
-**Paper:** [PDF](paper/beyond99percenttest1.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
+**Paper:** [PDF](https://github.com/PopcornKitsilano/covid-ct-audit/raw/main/paper/Beyond99_preprint_v1.0.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
 
-<!-- After the Zenodo upload add: **DOI:** https://doi.org/10.5281/zenodo.XXXXXXX -->
+**DOI:** [10.5281/zenodo.23317781](https://doi.org/10.5281/zenodo.23317781) · **Zenodo archive:** [zenodo.org/records/23317781](https://zenodo.org/records/23317781)
+
+<!-- After the OSF Preprints upload is approved, add: · **OSF Preprints:** <its URL> -->
 
 ---
 
