@@ -5,7 +5,7 @@ authors:
   - family-names: Bhattacharya
     given-names: Sayantan
 version: 1.0.0
-date-released: 2026-10-12
+date-released: 2026-10-20
 license: MIT
 repository-code: "https://github.com/PopcornKitsilano/covid-ct-audit"
 doi: "10.5281/zenodo.23317781"
@@ -19,4 +19,6 @@ preferred-citation:
   institution:
     name: "Techno Main Salt Lake"
   doi: "10.5281/zenodo.23317781"
+  url: "https://doi.org/10.5281/zenodo.23317781"
   notes: "Preprint, not peer-reviewed."
+  # After OSF approves the preprint, you can add its URL here as an extra line, e.g. "Also on OSF Preprints: <url>" inside notes.
