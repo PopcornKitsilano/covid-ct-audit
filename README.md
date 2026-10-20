@@ -9,7 +9,7 @@ Sayantan Bhattacharya · Techno Main Salt Lake, Kolkata
 
 **Paper:** [PDF](https://github.com/PopcornKitsilano/covid-ct-audit/raw/main/paper/Bhattacharya_Beyond_99_Auditing_Leakage_Shortcuts_and_Calibration_in_COVID-19_CT_Classification.pdf) · **Raw log of the full run:** [results/all_outputs.txt](results/all_outputs.txt) · **Data card:** [docs/DATA.md](docs/DATA.md)
 
-**DOI:** [10.5281/zenodo.23317781](https://doi.org/10.5281/zenodo.23317781) · **Zenodo archive:** [zenodo.org/records/23317781](https://zenodo.org/records/23317781)
+**DOI:** [10.5281/zenodo.23504928](https://doi.org/10.5281/zenodo.23504928) · **Zenodo archive:** [zenodo.org/records/23504928](https://zenodo.org/records/23504928)
 
 <!-- After the OSF Preprints upload is approved, add: · **OSF Preprints:** <its URL> -->
 
@@ -174,9 +174,9 @@ True-patient-ID experiments on COVID-CT-MD, a ground-truth check of the lung mas
 ```bibtex
 @misc{bhattacharya2026beyond99,
   author = {Bhattacharya, Sayantan},
-  title  = {Beyond 99\%: Auditing Leakage, Shortcuts and Calibration in COVID-19 CT Classification},
+  title  = {Beyond 99%: Auditing Leakage, Shortcuts and Calibration in COVID-19 CT Classification},
   year   = {2026},
-  doi    = {10.5281/zenodo.23317781},
+  doi    = {10.5281/zenodo.23504928},
   url    = {https://doi.org/10.5281/zenodo.23317781},
   note   = {Preprint. Code: https://github.com/PopcornKitsilano/covid-ct-audit}
 }
